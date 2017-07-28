@@ -1,0 +1,816 @@
+# Final-HTX-Project-Selfdriving-robot
+//this Final project is about a selfdriving robot, which is controlled by ardiono, which controls motors aso 
+/*
+Dette program koerer robot stoevsugeren, og soerger for at den kan
+navigerer rundt i et rum selv, og finde tilbage til en laderstation.
+Lavet af: Jonas Stryhn, Anders Jensen og Rasmus Mathiesen
+Version 1.0
+Sidst rettet: 24/4/15
+ */
+
+//her difineres varibler til afstandsmåleren
+int Afstandsmaaler = A2;
+float minimumafstand = 150; //Afstand inden sensor reagerer
+int Afstand; //Gemmer den endelige afstand
+int AfstandInput; //Den raa data afstand
+boolean BilForTaetPaa;
+
+//her difineres varibler til lysfølsommodstands sensorsystem
+const int LysModstandMidt = A3; //Midt
+const int LysModstandVenstre = A4; //Venstre
+const int LysModstandHoejre = A5; //Hoejre
+const int StroemTilKreds = 6; //Tænder Hvid LED
+const int LysReagerMidt = 955; //Integers som lysmodstand reagerer med
+const int LysReagerVenstre = 450; //Integers som lysmodstand reagerer med
+const int LysReagerHoejre = 450; //Integers som lysmodstand reagerer med
+boolean LysModSortMidt = false;
+boolean LysModSortVenstre = false;
+boolean LysModSortHoejre = false;
+boolean RamtTape = false; // fortæller om bilen har ramt tapen
+
+//her difineres forlygterne
+const int Forlygte = 11;
+
+//her difineres DC motor viabler
+int DCmotorIndgang1 = 10;
+int DCmotorIndgang2 = 9;
+
+// her difineres Stepmotor 1 viabler
+int Step1HighRoedLowHvid = 3; //Bruges til styring af steps på motor
+int Step1HighGulLowBlaa = 2;  //Bruges til styring af steps på motor
+int Step1MotorDelay = 10;     //Forsinkelse imellem steps
+int Step1Grader = 0;          //Faktor x10
+int ResetStep = 0;            //Nulstiller antal steps
+int DrejeGrader = 7200;       //Faktor x10 grader
+int Step1OensketGrader;       //Antal grader step skal dreje
+boolean Step1MedUret = true;  //Bestemmer om den drejer med eller imod uret
+
+// her difineres Stepmotor2 viabler
+int Step2HighRoedLowHvid = 8; //Bruges til styring af steps på motor
+int Step2HighGulLowBlaa = 7;  //Bruges til styring af steps på motor
+int Step2MotorDelay = 5;      //Forsinkelse imellem steps
+int Step2Grader = 0;          //Faktor x10
+int Step2OensketGrader;       //Antal grader step skal dreje
+int DelaymellemSkift = 83;    // 83 ms = cirka 1/12 sek
+boolean Step2MedUret = true;  //Bestemmer om den drejer med eller imod uret
+boolean BilForTaetPaaVenstre;
+boolean BilForTaetPaaHoejre;
+boolean BilForTaetPaaLigeUd;
+boolean BilForTaetPaaBagUd;
+
+//her difineres TopLysdioderne
+int Lysdiode1 = 4;  //Gul LED, Rød hvis Gul og Grøn er tændt
+int Lysdiode2 = 5;  //Grøn LED ,Rød hvis Gul og Grøn er tændt
+
+
+// her difineres variabler til tidtagning af side a og b
+int StartTid = 0;
+int AktuelTid;
+int TidDetTagerA = 60;
+int TidDetTagerB = 60;
+
+//IKKE FULDENT
+int TidDetTagerAForhindring;
+int TidDetTagerBForhindring;
+
+//Tjekker om opladeren sidder i, imens den kører langs tape
+int RamtOplader = 0;
+
+boolean DrejerTilHoejre; //Fortæller om den drejer til højre
+
+
+// her difineres de viabler til at køre en række ind
+int RundeGrader; //Aktuelle grader i runden af rummet
+int RaekkeTid;  //
+int ReakkeTidPr1 = 5; // 1/10 sek
+
+// her difineres batteri aflæser
+int BatteriAflaes1 = A0;
+int BatteriAflaes2 = A1;
+
+//Her defineres vores Batteri afladnings simulation switch
+int BatteriSimlueringSwitch = 12;
+
+//Aktiveres hvis der går strøm ind via induktiv spole til port 13
+int DenOplader = 13;
+
+// the setup routine runs once when you press reset:
+void setup() {
+  // initialize serial communication at 9600 bits per second:
+  Serial.begin(9600);
+  //her vælges pinmodes til lysfølsommodstand sensor system
+  // vælger om portene er output eller input
+  pinMode(StroemTilKreds, OUTPUT);
+  pinMode(LysModstandMidt, INPUT);
+  pinMode(LysModstandVenstre, INPUT);
+  pinMode(LysModstandHoejre, INPUT);
+  //her vælges pinmodes til afstandsmåler
+  //her vælges pinmode til DC motor
+  pinMode(DCmotorIndgang1, OUTPUT);
+  pinMode(DCmotorIndgang2, OUTPUT);
+  // her vælges pinmode til stepmotor1
+  pinMode(Step1HighRoedLowHvid, OUTPUT);
+  pinMode(Step1HighGulLowBlaa, OUTPUT);
+  // her vælges pinmode til stepmotor2
+  pinMode(Step2HighRoedLowHvid, OUTPUT);
+  pinMode(Step2HighGulLowBlaa, OUTPUT);
+  //her vælges pinmode til toplysdioderne
+  pinMode(Lysdiode1, OUTPUT);
+  pinMode(Lysdiode2, OUTPUT);
+  // her væges pinmode for forlygterne
+  pinMode(Forlygte, OUTPUT);
+  //her vælges pinmode til BatteriAflæser
+  pinMode(BatteriAflaes1, OUTPUT);
+  pinMode(BatteriAflaes2, OUTPUT);
+  pinMode(BatteriSimlueringSwitch, INPUT);
+  pinMode(DenOplader, INPUT);
+}
+
+
+// the loop routine runs over and over again forever:
+void loop() {
+
+  //Hvis der går strøm ind via opladning og den er sat i batteri simuleringsmode, skal den blinke med stroem LED´er
+  if (digitalRead(DenOplader) == HIGH) {
+     if (digitalRead(BatteriSimlueringSwitch) == HIGH){
+    RoedLED();
+    delay(500);
+    GulLED();
+    delay(500);
+    GroenLED();
+    delay(500);
+    
+  }else{
+  //Kører almindeligt bevaegelse program
+   HeleRundeProgram();
+}
+}
+}
+
+void BatteriSimulering()
+//tjekker om vores batterisimulering switch er tændt
+{
+
+  if (digitalRead(BatteriSimlueringSwitch) == HIGH) {
+    RoedLED(); //tænder den røde LED
+    digitalWrite(StroemTilKreds, HIGH); //Tænder for hvide front LED´er
+    LysfoelsomModstandMaal(); // aflæser vores LysFølsommeModstande
+    TjekLysModKombi(); //
+    FindTapeStibe();
+  }
+  if (digitalRead(BatteriSimlueringSwitch) == LOW) {
+    GroenLED(); // tænder den grønne Led
+    digitalWrite(StroemTilKreds, LOW); //Slukker for hvide front LED´er
+
+  }
+}
+
+void KoerLidtTilVenstre() {
+  Step1Grader = ResetStep; // nulstiller de aktuelle grader til 0
+  Step1OensketGrader =  1800; // grader stepmtoren rotere *10
+  Step1MedUret  = false; // fortæller om programmet at den drejer mod uret
+  DrejRetning1(); // drejer stepmotoren den ønsket grader 
+  //fortæller programmet at den har gørt 90 af runden på 360
+  Serial.println("venstre"); //skriver i Serial retningen
+
+}
+
+void KoerLidtTilHoejre() {
+  Step1Grader = ResetStep; // nulstiller de aktuelle grader til 0
+  Step1OensketGrader =  1800; // grader stepmtoren rotere *10
+  Step1MedUret  = true; // fortæller om programmet at den drejer med uret
+  DrejRetning1(); // drejer stepmotoren den ønsket grader 
+  Serial.println("højre"); //skriver i Serial retningen
+
+}
+
+void LidtHoejTilMidt() {
+  Step1Grader = ResetStep; // resetter aktuelle grader
+  Step1OensketGrader =  1800; // ønsket grader er den samme som den antal grader den drejer
+  Step1MedUret  = false; // skal dreje modsat
+  DrejRetning1(); // drejer stepmotoren den ønsket grader
+  Serial.println("Midt"); Serial.println("højre"); //skriver i Serial retningen
+}
+
+void LidtVenstretilmidt() {
+  Step1Grader = ResetStep; // nulstiller de aktuelle grader til 0
+  Step1OensketGrader =  1800; // ønsket grader er den samme som den antal grader den drejer
+  Step1MedUret  = true; // skal dreje modsat
+  DrejRetning1(); // drejer stepmotoren den ønsket grader
+  Serial.println("Midt"); Serial.println("højre"); //skriver i Serial retningen
+}
+
+void DrejLidtVenstreLige() {
+  //bilen drejer lidt  i 2.6 sek derefter centere den sig igen derefter stopperden
+  KoerLidtTilVenstre();
+  DrejerTilHoejre = true;
+  delay(2600); //2,6 sek
+  LidtHoejTilMidt();
+}
+
+void DrejLidtHoejreLige() {
+  //bilen drejer lidt  i 2.6 sek derefter centere den sig igen derefter stopperden
+  KoerLidtTilHoejre();
+  DrejerTilHoejre = false;
+  delay(2600); //2,6 sek
+  LidtVenstretilmidt();
+}
+
+void IndenTapeFundet(){
+  while(RamtTape == false){
+    DCMotorFrem();
+  }
+  TapeRamt();
+}
+
+void FindTapeStibe() {
+  //den bruger rundegrader til at finde ud af hvor bilen er og hvordan den skal finde tape striben
+  if (RundeGrader > 90); { // hvis den ikke har drejet endnu i en runde
+    Drej90VenstreLige(); // skal den dreje 90 grader til venstre og rette op
+    IndenTapeFundet();
+
+  }
+
+  if (RundeGrader == 90); { // hvis den har drejet 1 gang i en runde
+    Drej90HoejreLige(); //drejer 90 grader til højre
+    Drej90HoejreLige();//drejer 90 grader til højre
+    IndenTapeFundet();
+  }
+
+  if (RundeGrader == 180); { // hvis den har drejet 2 gang i en runde
+  }
+  Drej90HoejreLige(); //drejer 90 grader til højre
+  IndenTapeFundet();
+
+  if (RundeGrader == 270) { // hvis den har drejet 3 gang i en runde
+    Drej90HoejreLige(); //drejer 90 grader til højre
+    delay(5000); // skal den vente lidt så den kommer fri fra opladeren
+    Drej90VenstreLige(); // drej 90 grader til venstre
+    IndenTapeFundet();
+  }
+
+}
+
+
+void DCMotorFrem() {
+  //bilen køre frem
+  digitalWrite(DCmotorIndgang1, LOW);
+  digitalWrite(DCmotorIndgang2, HIGH);
+  Serial.println("kør");
+}
+
+void DCMotorTilbage() {
+  //bilen køre Tilbage
+  digitalWrite(DCmotorIndgang1, HIGH);
+  digitalWrite(DCmotorIndgang2, LOW);
+}
+
+void DCMotorStop() {
+  //bilen Stopper
+  digitalWrite(DCmotorIndgang1, LOW);
+  digitalWrite(DCmotorIndgang2, LOW);
+  Serial.println("stop");
+}
+
+void AfstandsensorMaal() {
+  //omregner afstanden til v og tjekker om den er over vores ønsket stoppe længde
+  Afstand = 2.51 * analogRead(Afstandsmaaler) / 2;
+
+
+  if (Afstand <= minimumafstand) {
+    Serial.println("du er for taet paa");
+    BilForTaetPaa = true;
+    delay(1);
+  } else {
+    Serial.println("False");
+    BilForTaetPaa = false;
+  }
+}
+
+void LysfoelsomModstandMaal() {
+  //fortæller hvis den første lysfølsommodstand støder på sort farve
+  if (analogRead(LysModstandMidt) >= LysReagerMidt) {
+    LysModSortMidt = true;
+  } else {
+    LysModSortMidt = false;
+  }
+  //fortæller hvis den anden lysfølsommodstand støder på sort farve
+  if ( analogRead(LysModstandVenstre) >= LysReagerVenstre) {
+    LysModSortVenstre = true;
+  } else {
+    LysModSortVenstre = false;
+  }
+  //fortæller hvis den tredje lysfølsommodstand støder på sort farve
+  if (analogRead(LysModstandHoejre) >= LysReagerHoejre) {
+    LysModSortHoejre = true;
+  } else {
+    LysModSortHoejre = false;
+  }
+}
+
+void TapeRamt() {
+  Drej90HoejreLige();
+  DCMotorStop();
+  DCMotorTilbage();
+  KoerEfterTape();
+}
+
+void KoerEfterTape() {
+  while (RamtOplader == 0) {
+    LysfoelsomModstandMaal();
+    Serial.println(analogRead(LysModstandHoejre));
+    DCMotorTilbage();
+    if (LysModSortHoejre == false) {
+      DrejLidtHoejreLige();
+    }
+    if (LysModSortVenstre == false) {
+      DrejLidtVenstreLige();
+    }
+  }
+  DCMotorStop();
+}
+
+void TjekLysModKombi() {
+  //tjekker om de de lysfølsommodstande har set sort og lyser med dioderne
+  //if (LysModSortMidt == true){
+  //RoedLED();
+  //}
+  if (LysModSortVenstre == true) {
+    Serial.println("VenstreTRUE");
+    RamtTape = true;
+  } else {
+    RamtTape = false;
+  }
+  if (LysModSortHoejre == true) {
+    RamtTape = true;
+    Serial.println("HoejreTRUE");
+    
+    } else {
+    RamtTape = false;
+  }
+}
+
+void RoedLED() {
+  //tænder den røde
+  digitalWrite(Lysdiode1, HIGH);
+  digitalWrite(Lysdiode2, HIGH);
+}
+
+void GroenLED() {
+  //tænder den grønne
+  digitalWrite(Lysdiode1, LOW);
+  digitalWrite(Lysdiode2, HIGH);
+}
+
+void GulLED() {
+  //tænder den gule
+  digitalWrite(Lysdiode1, HIGH);
+  digitalWrite(Lysdiode2, LOW);
+}
+
+void ResetLED() {
+  //Slukker alle Strøm indikator LED´er
+  digitalWrite(Lysdiode1, LOW);
+  digitalWrite(Lysdiode2, LOW);
+
+}
+
+
+void Step1_1()
+{
+  //køre et step med stepmotor
+  digitalWrite(Step1HighRoedLowHvid, LOW);
+  digitalWrite(Step1HighGulLowBlaa, LOW);
+  delay(Step1MotorDelay);
+  Step1Grader = Step1Grader + 18;
+}
+
+void Step2_1()
+{
+  //køre et step med stepmotor
+  digitalWrite(Step1HighRoedLowHvid, HIGH);
+  digitalWrite(Step1HighGulLowBlaa, LOW);
+  delay(Step1MotorDelay);
+  Step1Grader = Step1Grader + 18;
+}
+
+void Step3_1()
+{
+  //køre et step med stepmotor
+  digitalWrite(Step1HighRoedLowHvid, HIGH);
+  digitalWrite(Step1HighGulLowBlaa, HIGH);
+  delay(Step1MotorDelay);
+  Step1Grader = Step1Grader + 18;
+}
+
+void Step4_1()
+{
+  //køre et step med stepmotor
+
+  digitalWrite(Step1HighRoedLowHvid, LOW);
+  digitalWrite(Step1HighGulLowBlaa, HIGH);
+  delay(Step1MotorDelay);
+  Step1Grader = Step1Grader + 18;
+}
+
+void StepMedUret1()
+{
+  // køre med uret
+  Step1_1();
+
+  Step2_1();
+
+  Step3_1();
+
+  Step4_1();
+
+}
+
+void StepModUret1()
+{
+
+  //køre mod uret
+  Step4_1();
+
+  Step3_1();
+
+  Step2_1();
+
+  Step1_1();
+
+
+}
+
+
+void DrejRetning1() {
+  //hvis den skal køre med uret skal den dreje intil den når de ønsket grader
+  if (Step1MedUret  == true) {
+    while (Step1Grader < Step1OensketGrader)
+    {
+
+      StepMedUret1();
+
+    }
+  }
+  //hvis den skal køre mod uret skal den dreje intil den når de ønsket grader
+  if (Step1MedUret  == false) {
+    while (Step1Grader < Step1OensketGrader)
+    {
+
+      StepModUret1();
+      Serial.println(Step1Grader);
+    }
+
+  }
+}
+
+void KoerTilVenstre() {
+  // resetter aktuelle grader og drejer det antal grader som er difinede, og printer den i serial monitor 
+  Step1Grader = ResetStep;
+  Step1OensketGrader =  DrejeGrader;
+  Step1MedUret  = false;
+  DrejRetning1();
+  //fortæller programmet at den har gørt 90 af runden på 360
+  Serial.println("venstre");
+
+}
+
+void KoerTilHoejre() {
+  // resetter aktuelle grader og drejer det antal grader som er difinede, og printer den i serial monitor 
+  Step1Grader = ResetStep;
+  Step1OensketGrader =  DrejeGrader;
+  Step1MedUret  = true;
+  DrejRetning1();
+  Serial.println("højre");
+}
+
+void Hoejretilmidt() {
+  // resetter aktuelle grader og drejer det antal grader som den drejede før bare modsat retning, og printer den i serial monitor 
+  Step1Grader = ResetStep;
+  Step1OensketGrader =  DrejeGrader;
+  Step1MedUret  = false;
+  DrejRetning1();
+  Serial.println("Midt");
+}
+
+void Venstretilmidt() {
+  // resetter aktuelle grader og drejer det antal grader som den drejede før bare modsat retning, og printer den i serial monitor 
+  Step1Grader = ResetStep;
+  Step1OensketGrader =  DrejeGrader;
+  Step1MedUret  = true;
+  DrejRetning1();
+  Serial.println("Midt");
+}
+
+// dette stepmotor er til sensortaarnet
+void Step1_2()
+{
+  //køre et step
+  digitalWrite(Step2HighRoedLowHvid, LOW);
+  digitalWrite(Step2HighGulLowBlaa, LOW);
+  delay(Step2MotorDelay);
+}
+
+void Step2_2()
+{
+  //køre et step
+  digitalWrite(Step2HighRoedLowHvid, HIGH);
+  digitalWrite(Step2HighGulLowBlaa, LOW);
+  delay(Step2MotorDelay);
+}
+
+void Step3_2()
+{
+  //køre et step
+  digitalWrite(Step2HighRoedLowHvid, HIGH);
+  digitalWrite(Step2HighGulLowBlaa, HIGH);
+  delay(Step2MotorDelay);
+}
+
+void Step4_2()
+{
+  //køre et step
+
+  digitalWrite(Step2HighRoedLowHvid, LOW);
+  digitalWrite(Step2HighGulLowBlaa, HIGH);
+  delay(Step2MotorDelay);
+}
+
+void StepMedUret2()
+{
+  // køre  4 steps med uret
+  Step1_2();
+
+  Step2_2();
+
+  Step3_2();
+
+  Step4_2();
+  Step2Grader = Step2Grader + 72;
+}
+
+void StepModUret2()
+{
+
+  //køre 4 steps mod uret
+  Step4_2();
+
+  Step3_2();
+
+  Step2_2();
+
+  Step1_2();
+  Step2Grader = Step2Grader - 72;
+
+
+}
+
+
+void DrejRetning2() {
+  //hvis den skal køre med uret skal den dreje intil den når de ønsket grader
+
+  while (Step2Grader < Step2OensketGrader)
+  {
+
+    StepMedUret2();
+    //Serial.print(Step2Grader);
+    //Serial.print(" med ");
+    //Serial.println(Step2OensketGrader);
+
+  }
+
+  //hvis den skal køre mod uret skal den dreje intil den når de ønsket grader
+
+  while (Step2Grader > Step2OensketGrader)
+  {
+
+    StepModUret2();
+    Serial.print(Step2Grader);
+    Serial.print(" mod ");
+    Serial.println(Step2OensketGrader);
+
+  }
+
+}
+
+
+void KigEfterVaegVenstre() {
+  //den sætter ønskede grader til 90 grader 
+  Step2OensketGrader = 936;
+  DrejRetning2(); // den drejer stepmotoren med afstandsmåleren 90 grader
+  AfstandsensorMaal(); // måler afstanden 
+  if (BilForTaetPaa == true) { // hvis bilen er for tæt på fortæller den programmet i den pågældene position
+    BilForTaetPaaVenstre = true;
+  } else {
+    BilForTaetPaaVenstre = false; // hvis ikke fortæller den programmet at den er fri i den pågældene position
+  }
+
+  Serial.println(Afstand); // printer afstanden til væg i serial monitor
+}
+
+void KigEfterVaegLigeud() {
+  Step2OensketGrader = 1800; //den sætter ønskede grader til 180 grader 
+  DrejRetning2(); // den drejer stepmotoren med afstandsmåleren  så den aktuelle grader er 180 grader
+  AfstandsensorMaal(); // måler afstanden 
+  if (BilForTaetPaa == true) {
+    BilForTaetPaaLigeUd = true; // hvis bilen er for tæt på fortæller den programmet i den pågældene position
+  } else
+    BilForTaetPaaLigeUd = false; // hvis ikke fortæller den programmet at den er fri i den pågældene position
+  Serial.println(Afstand); // printer afstanden til væg i serial monitor
+}
+
+void KigEfterVaegHoejre() {
+  Step2OensketGrader = 2736; //den sætter ønskede grader til 270 grader 
+  DrejRetning2(); // den drejer stepmotoren med afstandsmåleren  så den aktuelle grader er 270 grader
+  AfstandsensorMaal(); // måler afstanden 
+  if (BilForTaetPaa == true) {
+    BilForTaetPaaHoejre = true; // hvis bilen er for tæt på fortæller den programmet i den pågældene position
+  } else {
+    BilForTaetPaaHoejre = false; // hvis ikke fortæller den programmet at den er fri i den pågældene position
+  }
+  Serial.println(Afstand); // printer afstanden til væg i serial monitor
+}
+
+void KigEfterVaegTilbage() {
+  Step2OensketGrader = 0; //den sætter ønskede grader til 0 grader 
+  DrejRetning2(); // den drejer stepmotoren med afstandsmåleren  så den aktuelle grader er 0 grader
+  AfstandsensorMaal(); // måler afstanden
+  if (BilForTaetPaa == true) {
+    BilForTaetPaaBagUd = true; // hvis bilen er for tæt på fortæller den programmet i den pågældene position
+  } else {
+    BilForTaetPaaBagUd = false; // hvis ikke fortæller den programmet at den er fri i den pågældene position
+  }
+  Serial.println(Afstand); // printer afstanden til væg i serial monitor
+}
+
+
+void KigEnOmgang() {
+  //den skifter mellem sensor posisioner mens den måler
+  //Serial.println("kig en omgang");
+  Step2Grader = ResetStep;
+  //Serial.println(" KigEfterVaegVenstre");
+  KigEfterVaegVenstre();
+  delay(DelaymellemSkift);
+  //Serial.println(" KigEfterVaegLigeud");
+  KigEfterVaegLigeud();
+  delay(DelaymellemSkift);
+  //Serial.println(" KigEfterVaegHøjre");
+  KigEfterVaegHoejre();
+  delay(DelaymellemSkift);
+  KigEfterVaegLigeud();
+  delay(DelaymellemSkift);
+  KigEfterVaegVenstre();
+  delay(DelaymellemSkift);
+  KigEfterVaegTilbage();
+  delay(DelaymellemSkift);
+}
+
+//hvis man har kørt langs 1 væg skal den vise for lang tid det tager at køre den side
+void TagTidPaaA() {
+  if (RundeGrader == 90) {
+    if (DrejerTilHoejre == false) {
+      AktuelTid = AktuelTid + 1 ;
+      delay(100);
+
+    }
+    TidDetTagerA = AktuelTid;
+  }
+}
+void TagTidPaaB() {
+  //hvis man har kørt langs 2 vægge skal den vise for lang tid det tager at køre den side
+  if ( RundeGrader == 180) {
+    if (DrejerTilHoejre == false) {
+      AktuelTid = AktuelTid + 1 ;
+      delay(100);
+
+    }
+    TidDetTagerB = AktuelTid;
+  }
+}
+
+void RaekkeInd() {
+  //hvis den har kørt langs alle vægge undtagen en skal den køre langs den sidste væg i den tid det tager at køre en normal væg trækker tiden det vil tage at køre bredetn fra.
+  if (RundeGrader == 270) {
+    RaekkeTid = ReakkeTidPr1;
+    while (AktuelTid < TidDetTagerA - RaekkeTid) {
+      AktuelTid = AktuelTid + 1;
+      delay(100); // milisek
+      DCMotorFrem();
+    }
+    Drej90HoejreLige();
+  }
+}
+
+void Drej90HoejreLige() {
+  //bilen drejer 90 grader i 11.5 sek derefter centere den sig igen derefter stopperden
+  KoerTilHoejre();
+  RundeGrader = RundeGrader + 90;
+  DrejerTilHoejre = true;
+  delay(2600); //9 sek
+  //KigEnOmgang();
+  //AfstandsensorMaal();
+  //UndvingVaeg();
+  Hoejretilmidt();
+
+}
+
+void Drej90VenstreLige() {
+  //bilen drejer 90 grader i 11.5 sek derefter centere den sig igen derefter stopperden
+  KoerTilVenstre();
+  RundeGrader = RundeGrader - 90;
+  DrejerTilHoejre = false;
+  delay(2600);
+  Venstretilmidt();
+}
+//hvis bilen er for tæt på en væg foran og venstre skal den dreje 90grader
+void UndvingVaeg() {
+  if (BilForTaetPaaLigeUd == true) {
+
+
+    Drej90HoejreLige();
+
+
+  }
+}
+
+
+void FoersteRundeProgram() {
+  //dette skal køre som det første program
+  digitalWrite(Forlygte, HIGH); //tænder forlygt og baglygt
+  while (RundeGrader < 90) { //hvis de er ved den første væg
+    DCMotorFrem(); //bilen kører frem
+    KigEnOmgang(); // afstandsmålertårnet kiger en omgang og aflæser resultater 
+    UndvingVaeg(); // hvis den er for tæt på skal den undvige
+    BatteriSimulering(); // hvis Batteriswitchen er tændt skal den køre batterisimulation
+
+  }
+  AktuelTid = StartTid; //resetter den aktuelle tid
+  while (RundeGrader == 90) { //hvis de er ved den anden væg
+    TagTidPaaA(); // mål tiden det tager at køre side A 
+    KigEnOmgang(); // afstandsmålertårnet kiger en omgang og aflæser resultater 
+    UndvingVaeg(); // hvis den er for tæt på skal den undvige
+    BatteriSimulering(); // hvis Batteriswitchen er tændt skal den køre batterisimulation
+  }
+
+  AktuelTid = StartTid; //resetter den aktuelle tid
+  while (RundeGrader == 180) { //hvis de er ved den tredje væg
+    TagTidPaaB();  // mål tiden det tager at køre side B
+    KigEnOmgang(); // afstandsmålertårnet kiger en omgang og aflæser resultater 
+    UndvingVaeg(); // hvis den er for tæt på skal den undvige
+    BatteriSimulering(); // hvis Batteriswitchen er tændt skal den køre batterisimulation
+  }
+  RaekkeInd(); // bilen drejer en rækkebrede før læser væggen
+
+}
+
+void AndenRundeSideA() {
+  //køre den tid det tager at køre side A nu minus tiden det tager med rækkebreden
+  while ( AktuelTid <= TidDetTagerA - RaekkeTid) {
+    AktuelTid = AktuelTid + 206;
+    delay(100);// milisek
+    KigEnOmgang();
+    BatteriSimulering();
+  }
+  Drej90HoejreLige();
+}
+
+void AndenRundeSideB() {
+  //køre den tid det tager at køre side B nu minus tiden det tager med rækkebreden
+  while ( AktuelTid <= TidDetTagerB - RaekkeTid) {
+    AktuelTid = AktuelTid + 206;
+    delay(100);// milisek
+    KigEnOmgang(); //vare 6 milisek
+    BatteriSimulering();
+  }
+  Drej90HoejreLige();
+}
+
+void AndenRundeProgram() {
+  //køre den tid det tager at køre side A nu minus tiden det tager med rækkebreden og det samme med side b derefter enten den så det er 2 rækker istedet for 1. og køre en række ind.
+  AktuelTid = StartTid; // nulstiller Aktueltid
+  AndenRundeSideA();
+  AktuelTid = StartTid; // nulstiller Aktueltid
+  AndenRundeSideB();
+  RaekkeTid = RaekkeTid + ReakkeTidPr1;
+  RaekkeInd();
+
+}
+
+void RestenRundeProgram() {
+  //den skal blive ved at med køre rundt intil den når centrum
+  while ((TidDetTagerA) > 0) {
+    AndenRundeProgram();
+  }
+  DCMotorStop();
+  delay(5000); // stopper i 5 sek
+}
+
+//køre først den første runde hvor den måler rummet og køre dernæst resten af runderne.
+void HeleRundeProgram() {
+  FoersteRundeProgram();
+  AndenRundeProgram();
+  RestenRundeProgram();
+}
+
+
+
